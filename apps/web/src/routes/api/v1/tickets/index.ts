@@ -38,6 +38,11 @@ const createTicketSchema = z.object({
   attachments: attachmentsSchema,
   // Values for the ticket type's fields, keyed by field key (requires ticketTypeId).
   fields: z.record(z.string(), z.unknown()).optional(),
+  // An integration relaying the requester's own words (an in-app form): the
+  // description is their message and the key does not take the ticket.
+  filedByRequester: z.boolean().optional(),
+  // false: the caller already acknowledged the requester; skip the created email.
+  notifyRequester: z.boolean().optional(),
 })
 
 export const Route = createFileRoute('/api/v1/tickets/')({
@@ -118,6 +123,9 @@ export const Route = createFileRoute('/api/v1/tickets/')({
             'ticket_type',
             'ticket type ID'
           )
+          if (parsed.data.filedByRequester && !requesterPrincipalId) {
+            return badRequestResponse('filedByRequester needs requesterPrincipalId')
+          }
           const customAttributes = await resolveApiTicketFields(ticketTypeId, parsed.data.fields)
 
           const actor = serviceActorFromApiAuth(auth)
@@ -138,6 +146,8 @@ export const Route = createFileRoute('/api/v1/tickets/')({
               companyId,
               attachments: toAttachments(parsed.data.attachments),
               customAttributes,
+              filedByRequester: parsed.data.filedByRequester,
+              notifyRequester: parsed.data.notifyRequester,
               // CONVERGENCE PHASE 1b: a customer-intake path — a CUSTOMER ticket
               // created WITH a requester gets its backing conversation + link in
               // the same transaction (createTicketCore's doc carries the
